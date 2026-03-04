@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/hooks/use-toast";
 import {
-  Sun, Moon, ToggleRight, ToggleLeft, Power, PowerOff,
+  Sun, Moon, Power, PowerOff,
   Activity, Zap, RefreshCw, AlertTriangle, Wifi
 } from "lucide-react";
 import {
@@ -37,8 +39,7 @@ function relativeTime(date: Date): string {
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
+  return `${Math.floor(minutes / 60)}h ago`;
 }
 
 function parseLatestFeed(feed: FeedEntry): DashboardData {
@@ -59,11 +60,21 @@ export default function LiveDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [demoOverride, setDemoOverride] = useState<boolean | null>(null);
+  const prevMotionCount = useRef<number>(0);
+  const { toast } = useToast();
 
   // Tick clock for relative time
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(id);
+  }, []);
+
+  // Request notification permission
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
   }, []);
 
   const fetchData = useCallback(async (isManual = false) => {
@@ -79,7 +90,24 @@ export default function LiveDashboard() {
       const historyJson = await historyRes.json();
 
       if (latestJson.feeds?.length) {
-        setData(parseLatestFeed(latestJson.feeds[0]));
+        const parsed = parseLatestFeed(latestJson.feeds[0]);
+        
+        // Browser notification on motion increase
+        if (parsed.motionCount > prevMotionCount.current && prevMotionCount.current !== 0) {
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("🐾 Motion detected!", {
+              body: `Count: ${parsed.motionCount}`,
+              icon: "/favicon.ico",
+            });
+          }
+        }
+        prevMotionCount.current = parsed.motionCount;
+
+        // Apply demo override if active
+        if (demoOverride !== null) {
+          parsed.demoMode = demoOverride;
+        }
+        setData(parsed);
       }
 
       if (historyJson.feeds?.length) {
@@ -101,7 +129,7 @@ export default function LiveDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [demoOverride]);
 
   useEffect(() => {
     fetchData();
@@ -109,8 +137,20 @@ export default function LiveDashboard() {
     return () => clearInterval(id);
   }, [fetchData]);
 
+  const handleDemoToggle = (checked: boolean) => {
+    setDemoOverride(checked);
+    if (data) {
+      setData({ ...data, demoMode: checked });
+    }
+    toast({
+      title: checked ? "Demo Mode enabled" : "Demo Mode disabled",
+      description: "Demo override active – local toggle only",
+    });
+  };
+
   const freqPercent = data ? Math.min((data.frequency / 4500) * 100, 100) : 0;
   const buzzerActive = data ? data.frequency > 0 : false;
+  const effectiveDemoMode = demoOverride ?? data?.demoMode ?? false;
 
   if (loading) {
     return (
@@ -195,23 +235,28 @@ export default function LiveDashboard() {
               </CardContent>
             </Card>
 
-            {/* Demo Mode */}
-            <Card className="transition-all duration-300 hover:scale-[1.02] hover:shadow-lg border-border">
+            {/* Demo Mode with Toggle */}
+            <Card className={`transition-all duration-300 hover:scale-[1.02] hover:shadow-lg ${
+              effectiveDemoMode ? "border-primary/30 glow-primary" : "border-border"
+            }`}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-mono uppercase tracking-wider text-muted-foreground flex items-center justify-between">
                   Demo Mode
-                  {data.demoMode
-                    ? <ToggleRight className="w-5 h-5 text-primary" />
-                    : <ToggleLeft className="w-5 h-5 text-muted-foreground" />
-                  }
+                  <Switch
+                    checked={effectiveDemoMode}
+                    onCheckedChange={handleDemoToggle}
+                  />
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Badge variant={data.demoMode ? "default" : "secondary"} className="text-sm px-3 py-1">
-                  {data.demoMode ? "ON" : "OFF"}
+                <Badge variant={effectiveDemoMode ? "default" : "secondary"} className="text-sm px-3 py-1">
+                  {effectiveDemoMode ? "ON" : "OFF"}
                 </Badge>
                 <p className="text-xs text-muted-foreground mt-2">
-                  {data.demoMode ? "LDR bypass active" : "Normal operation"}
+                  {demoOverride !== null
+                    ? "Demo override active"
+                    : effectiveDemoMode ? "LDR bypass active" : "Normal operation"
+                  }
                 </p>
               </CardContent>
             </Card>
@@ -294,26 +339,26 @@ export default function LiveDashboard() {
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={history}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 14% 18%)" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis
                         dataKey="time"
-                        tick={{ fill: "hsl(215 12% 55%)", fontSize: 11 }}
+                        tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                         tickLine={false}
-                        axisLine={{ stroke: "hsl(220 14% 18%)" }}
+                        axisLine={{ stroke: "hsl(var(--border))" }}
                       />
                       <YAxis
-                        tick={{ fill: "hsl(215 12% 55%)", fontSize: 11 }}
+                        tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                         tickLine={false}
-                        axisLine={{ stroke: "hsl(220 14% 18%)" }}
+                        axisLine={{ stroke: "hsl(var(--border))" }}
                         allowDecimals={false}
                       />
                       <RechartsTooltip
                         contentStyle={{
-                          backgroundColor: "hsl(220 18% 10%)",
-                          border: "1px solid hsl(220 14% 18%)",
+                          backgroundColor: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
                           borderRadius: "8px",
                           fontSize: 12,
-                          color: "hsl(210 20% 92%)",
+                          color: "hsl(var(--foreground))",
                         }}
                         formatter={(value: number) => [value, "Motions"]}
                         labelFormatter={(label) => `Time: ${label}`}
@@ -321,10 +366,10 @@ export default function LiveDashboard() {
                       <Line
                         type="monotone"
                         dataKey="motions"
-                        stroke="hsl(160 84% 45%)"
+                        stroke="hsl(var(--primary))"
                         strokeWidth={2}
-                        dot={{ r: 3, fill: "hsl(160 84% 45%)" }}
-                        activeDot={{ r: 5, stroke: "hsl(160 84% 45%)", strokeWidth: 2 }}
+                        dot={{ r: 3, fill: "hsl(var(--primary))" }}
+                        activeDot={{ r: 5, stroke: "hsl(var(--primary))", strokeWidth: 2 }}
                       />
                     </LineChart>
                   </ResponsiveContainer>
