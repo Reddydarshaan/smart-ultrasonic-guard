@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import CodePage from "./pages/CodePage";
 import HardwarePage from "./pages/HardwarePage";
 import DocsPage from "./pages/DocsPage";
+import LiveDashboard from "./pages/LiveDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <NavBar />
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/live" element={<LiveDashboard />} />
             <Route path="/code" element={<CodePage />} />
             <Route path="/hardware" element={<HardwarePage />} />
             <Route path="/docs" element={<DocsPage />} />

@@ -1,9 +1,10 @@
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "react-router-dom";
-import { Activity, Code, Cpu, FileText } from "lucide-react";
+import { Activity, Code, Cpu, FileText, Radio } from "lucide-react";
 
 const links = [
   { to: "/", label: "Dashboard", icon: Activity },
+  { to: "/live", label: "Live Feed", icon: Radio },
   { to: "/code", label: "ESP32 Code", icon: Code },
   { to: "/hardware", label: "Hardware", icon: Cpu },
   { to: "/docs", label: "Documentation", icon: FileText },
